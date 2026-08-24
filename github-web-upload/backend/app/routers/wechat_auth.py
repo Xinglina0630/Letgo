@@ -1,7 +1,7 @@
 """WeChat Mini Program login endpoint."""
 
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ class WechatLoginResponse(BaseModel):
 
 
 @router.post("/login", response_model=WechatLoginResponse)
-async def wechat_login(data: WechatLoginRequest, db: Session = Depends(get_db)):
+async def wechat_login(data: WechatLoginRequest, request: Request, db: Session = Depends(get_db)):
     """
     Exchange wx.login code for internal user session.
 
@@ -37,10 +37,18 @@ async def wechat_login(data: WechatLoginRequest, db: Session = Depends(get_db)):
     if not data.code or not data.code.strip():
         raise HTTPException(status_code=422, detail="code is required")
 
-    try:
-        wx_data = await code2session(data.code)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+    # wx.cloud.callContainer injects the verified WeChat identity into these
+    # headers. Prefer it in CloudRun so login does not depend on an outbound
+    # request to api.weixin.qq.com.
+    cloud_openid = request.headers.get("x-wx-openid", "").strip()
+    cloud_unionid = request.headers.get("x-wx-unionid", "").strip()
+    if cloud_openid:
+        wx_data = {"openid": cloud_openid, "unionid": cloud_unionid}
+    else:
+        try:
+            wx_data = await code2session(data.code)
+        except ValueError as e:
+            raise HTTPException(status_code=401, detail=str(e))
 
     openid = wx_data["openid"]
     unionid = wx_data.get("unionid", "") or None
