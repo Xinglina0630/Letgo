@@ -55,6 +55,7 @@ async def amap_route(
     origin_name: str = Query(""),
     dest_name: str = Query(""),
     city: str = Query(""),
+    refresh: bool = Query(False, description="跳过短期缓存并重新请求高德"),
 ):
     """
     Get route(s) from AMap supporting multiple alternatives.
@@ -73,7 +74,7 @@ async def amap_route(
         origin_lng=origin_lng, origin_lat=origin_lat,
         dest_lng=dest_lng, dest_lat=dest_lat,
         mode=mode, origin_name=origin_name, dest_name=dest_name,
-        city=city,
+        city=city, refresh=refresh,
     )
 
     # Return compat dict format for seamless frontend transition
