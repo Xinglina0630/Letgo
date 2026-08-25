@@ -428,6 +428,7 @@ async def get_route(
     mode: str = "driving",
     origin_name: str = "", dest_name: str = "",
     city: str = "",
+    refresh: bool = False,
 ) -> AmapRouteResponse:
     """Get route(s) from AMap for the specified mode. Returns multiple options."""
     key = _api_key()
@@ -451,9 +452,10 @@ async def get_route(
 
     # Cache check
     ck = _cache_key("route", origin, dest, am, city)
-    cached = _cache_get(ck)
-    if cached:
-        return cached
+    if not refresh:
+        cached = _cache_get(ck)
+        if cached:
+            return cached
 
     try:
         if am == "bicycling":
