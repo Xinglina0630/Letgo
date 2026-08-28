@@ -7,8 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.itinerary import Itinerary, ItineraryNode, ItineraryEdge
-from app.models.collaboration import TravelProject, TravelProjectMember
-from app.models.custom_tags import TravelProjectCustomTag
+from app.models.collaboration import TravelProjectMember
 from app.schemas.itinerary import ItineraryCreateRequest
 
 
@@ -201,26 +200,11 @@ class ItineraryService:
         return itinerary
 
     async def delete(self, db: Session, itinerary_id: str, user_id: str) -> bool:
-        """Delete an itinerary and remove its now-unused collaboration project."""
+        """Delete an owner itinerary while retaining its collaboration audit project."""
         itinerary = await self.get(db, itinerary_id, user_id)
         if not itinerary:
             return False
-        project_id = itinerary.project_id
         db.delete(itinerary)
-        db.flush()
-        if project_id:
-            remaining = db.query(Itinerary.id).filter(Itinerary.project_id == project_id).first()
-            project = db.query(TravelProject).filter(
-                TravelProject.id == project_id,
-                TravelProject.owner_id == user_id,
-            ).first()
-            if project and not remaining:
-                # Explicit cleanup supports existing databases whose older
-                # association table did not yet have ON DELETE CASCADE.
-                db.query(TravelProjectCustomTag).filter(
-                    TravelProjectCustomTag.project_id == project_id
-                ).delete(synchronize_session=False)
-                db.delete(project)
         db.commit()
         return True
 

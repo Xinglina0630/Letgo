@@ -108,8 +108,8 @@ def _normalize_phone(value: str) -> str:
 
 
 def _validate_password(password: str, field_name: str = "密码") -> None:
-    if len(password or "") < 6:
-        raise HTTPException(status_code=422, detail=f"{field_name}至少需要6个字符")
+    if len(password or "") < 8:
+        raise HTTPException(status_code=422, detail=f"{field_name}至少需要8个字符")
     if len(password) > 128:
         raise HTTPException(status_code=422, detail=f"{field_name}不能超过128个字符")
 
@@ -302,7 +302,7 @@ async def me(
         return {"authenticated": False, "user": None}
 
     user = get_user_by_id(db, user_id)
-    if not user:
+    if not user or not user.is_active:
         return {"authenticated": False, "user": None}
     if int(payload.get("ver", 0)) != int(user.token_version or 0):
         return {"authenticated": False, "user": None}
@@ -329,21 +329,10 @@ class ProfileUpdateRequest(BaseModel):
 @router.patch("/profile")
 async def update_profile(
     data: ProfileUpdateRequest,
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Update display name."""
-    token = _extract_token(request, credentials)
-    if not token:
-        raise HTTPException(status_code=401, detail="请先登录")
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="登录已过期")
-    user = get_user_by_id(db, payload.get("sub", ""))
-    if not user:
-        raise HTTPException(status_code=401, detail="用户不存在")
-
     name = data.display_name.strip()
     if not name or len(name) < 1:
         raise HTTPException(status_code=422, detail="名称不能为空")
@@ -359,21 +348,10 @@ async def update_profile(
 @router.post("/avatar")
 async def upload_avatar(
     file: UploadFile = File(...),
-    request: Request = None,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Upload user avatar image. Max 2MB, PNG/JPEG/WebP only."""
-    token = _extract_token(request, credentials)
-    if not token:
-        raise HTTPException(status_code=401, detail="请先登录")
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="登录已过期")
-    user = get_user_by_id(db, payload.get("sub", ""))
-    if not user:
-        raise HTTPException(status_code=401, detail="用户不存在")
-
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="请选择图片")
 

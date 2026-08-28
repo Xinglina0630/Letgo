@@ -14,6 +14,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -504,15 +505,32 @@ def revoke_invite(
 def list_events(
     project_id: str,
     limit: int = Query(30, ge=1, le=100),
+    after_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Get recent project activity/events."""
     check_project_member(db, project_id, user.id)
 
+    query = db.query(TravelProjectEvent).filter(TravelProjectEvent.project_id == project_id)
+    if after_id:
+        cursor = db.query(TravelProjectEvent).filter(
+            TravelProjectEvent.project_id == project_id,
+            TravelProjectEvent.id == after_id,
+        ).first()
+        if cursor:
+            # Include the cursor itself so older clients can still locate it,
+            # plus every event committed after it.
+            query = query.filter(or_(
+                TravelProjectEvent.created_at > cursor.created_at,
+                and_(
+                    TravelProjectEvent.created_at == cursor.created_at,
+                    TravelProjectEvent.id >= cursor.id,
+                ),
+            ))
+
     events = (
-        db.query(TravelProjectEvent)
-        .filter(TravelProjectEvent.project_id == project_id)
+        query
         # UUID is used as a deterministic tie-breaker when multiple events are
         # committed in the same database timestamp tick.
         .order_by(TravelProjectEvent.created_at.desc(), TravelProjectEvent.id.desc())

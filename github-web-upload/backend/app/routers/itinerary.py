@@ -184,8 +184,19 @@ async def delete_itinerary(
     itinerary = db.query(Itinerary).filter(Itinerary.id == itinerary_id).first()
     if not itinerary:
         raise HTTPException(status_code=404, detail="Itinerary not found")
-    if not _check_itinerary_edit(db, itinerary, user.id):
-        raise HTTPException(status_code=403, detail="你没有删除该行程的权限")
+    if itinerary.user_id != user.id:
+        raise HTTPException(status_code=403, detail="只有攻略创建者可以删除整份攻略")
+
+    if itinerary.project_id:
+        db.add(TravelProjectEvent(
+            project_id=itinerary.project_id,
+            actor_id=user.id,
+            event_type="itinerary_deleted",
+            entity_type="itinerary",
+            entity_id=itinerary.id,
+            base_version=itinerary.version,
+            summary=f"删除了攻略「{itinerary.name}」",
+        ))
 
     deleted = await itinerary_service.delete(db, itinerary_id, user.id)
     if not deleted:
@@ -232,6 +243,14 @@ async def share_itinerary(
             event_type="project.created",
             summary=f"为攻略「{itinerary.name}」创建了协作项目",
         ))
+
+    # Only the newest room code remains valid. This prevents opening the guide
+    # repeatedly from leaving many usable codes in the database.
+    db.query(TravelProjectInvite).filter(
+        TravelProjectInvite.project_id == project.id,
+        TravelProjectInvite.scope == "itinerary",
+        TravelProjectInvite.revoked_at.is_(None),
+    ).update({"revoked_at": datetime.utcnow()}, synchronize_session=False)
 
     token = gen_invite_token()
     code = gen_invite_code()
